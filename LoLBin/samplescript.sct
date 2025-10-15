@@ -1,0 +1,102 @@
+<?XML version="1.0"?>
+<package>
+    <comment>System Info Collector using regsvr32 and scrobj.dll</comment>
+    <component id="sysinfo">
+        <?component error="true" debug="true"?>
+        <public>
+            <method name="CollectInfo"/>
+        </public>
+
+        <script language="JScript">
+            <![CDATA[
+
+            // --- JScript Code for Windows Script Host (WSH) ---
+
+            var fso = new ActiveXObject("Scripting.FileSystemObject");
+            var shell = new ActiveXObject("WScript.Shell");
+            var network = new ActiveXObject("WScript.Network");
+
+            // Function to generate the timestamped filename
+            function generateFilename() {
+                var d = new Date();
+                var y = d.getFullYear();
+                var m = (d.getMonth() + 1).toString().padStart(2, '0');
+                var day = d.getDate().toString().padStart(2, '0');
+                var h = d.getHours().toString().padStart(2, '0');
+                var min = d.getMinutes().toString().padStart(2, '0');
+                var sec = d.getSeconds().toString().padStart(2, '0');
+                return "informe_" + y + "-" + m + "-" + day + "_" + h + "-" + min + "-" + sec + ".txt";
+            }
+
+            // The main execution method (implicitly called by scrobj.dll)
+            function CollectInfo() {
+                var filename = generateFilename();
+                var path = shell.CurrentDirectory + "\\" + filename;
+
+                try {
+                    // Create and open the file
+                    var file = fso.CreateTextFile(path, true);
+                    var content = "";
+
+                    // 1. Saludo Inicial
+                    content += "==========================================================\r\n";
+                    content += "                      HOLA WORLD                          \r\n";
+                    content += "==========================================================\r\n\r\n";
+
+                    // 2. Identificar el usuario y sus permisos (WSH limitations)
+                    content += "# Información del Usuario y Permisos\r\n";
+                    content += "---------------------------------------\r\n";
+                    content += "Usuario Ejecutor: " + network.UserName + "\r\n";
+                    content += "Nombre del Equipo: " + network.ComputerName + "\r\n";
+                    
+                    // WSH can't easily check for admin rights like Node.js or .bat's 'net session'.
+                    // We'll run a shell command instead.
+                    var adminCheck = "USUARIO ESTÁNDAR (No elevados)";
+                    try {
+                        // Try running a command that requires elevation (like 'net session')
+                        // We capture the output and check the error code.
+                        var output = shell.Exec("cmd /c net session").StdErr.ReadAll();
+                        if (output === "") { // If command executes without error, usually means elevated
+                            adminCheck = "ADMINISTRADOR (Elevados - Asumido)";
+                        }
+                    } catch(e) { /* Keep standard if shell.Exec fails */ }
+                    
+                    content += "Permisos: " + adminCheck + "\r\n\r\n";
+
+                    // 3. Datos Relevantes del Sistema (Using WMI via GetObject)
+                    content += "# Datos Relevantes del Sistema\r\n";
+                    content += "----------------------------------\r\n\r\n";
+                    
+                    // Use WMI to get robust system data
+                    var wmi = GetObject("winmgmts:\\\\.\\root\\cimv2");
+                    
+                    // OS Info
+                    var os = wmi.ExecQuery("SELECT Caption, OSArchitecture, Version FROM Win32_OperatingSystem").ItemIndex(0);
+                    content += "** Información del Sistema Operativo **\r\n";
+                    content += "Nombre del SO: " + os.Caption + "\r\n";
+                    content += "Versión: " + os.Version + "\r\n";
+                    content += "Arquitectura: " + os.OSArchitecture + "\r\n\r\n";
+                    
+                    // Memory Info
+                    var comp = wmi.ExecQuery("SELECT TotalVisibleMemorySize FROM Win32_ComputerSystem").ItemIndex(0);
+                    content += "** Información de la Memoria (RAM) **\r\n";
+                    content += "Memoria Total (KB): " + comp.TotalVisibleMemorySize + "\r\n";
+                    
+                    // Write to file and close
+                    file.Write(content);
+                    file.Close();
+
+                    // Optional: Display a message box (WSH feature)
+                    shell.Popup("✅ Proceso terminado.\nLa información ha sido guardada en:\n" + path, 0, "Script Info", 64);
+
+                } catch (e) {
+                    shell.Popup("❌ Error al ejecutar el script:\n" + e.description, 0, "Error", 16);
+                }
+            }
+
+            // Call the main function immediately when loaded by scrobj.dll
+            CollectInfo();
+            ]]>
+        </script>
+    </component>
+</package>
